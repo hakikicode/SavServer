@@ -21,12 +21,15 @@ let LOGIN_ACCESS = { [USER_TYPES.User]:[PLATFORM.DEVICE,PLATFORM.CLIENT], };
 const MAX_LOGIN_RETRY_LIMIT = 3;
 const LOGIN_REACTIVE_TIME = 20;   
 
+const SEND_LOGIN_OTP = { SMS:1, };
+const DEFAULT_SEND_LOGIN_OTP = SEND_LOGIN_OTP.SMS;
+
 const FORGOT_PASSWORD_WITH = {
   LINK: {
-    email: true,
-    sms: false
+    sms: true,
+    email: true
   },
-  EXPIRE_TIME: 20
+  EXPIRE_TIME: 5
 };
 
 module.exports = {
@@ -35,6 +38,8 @@ module.exports = {
   PLATFORM,
   MAX_LOGIN_RETRY_LIMIT,
   LOGIN_REACTIVE_TIME,
+  SEND_LOGIN_OTP,
+  DEFAULT_SEND_LOGIN_OTP,
   FORGOT_PASSWORD_WITH,
   LOGIN_ACCESS,
 };

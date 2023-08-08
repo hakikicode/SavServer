@@ -24,8 +24,11 @@ let User = sequelize.define('user',{
   updatedAt:{ type:DataTypes.DATE },
   addedBy:{ type:DataTypes.INTEGER },
   updatedBy:{ type:DataTypes.INTEGER },
+  userType:{ type:DataTypes.INTEGER },
   mobileNo:{ type:DataTypes.STRING },
-  isDeleted:{ type:DataTypes.BOOLEAN }
+  isDeleted:{ type:DataTypes.BOOLEAN },
+  googleId:{ type:DataTypes.STRING },
+  facebookId:{ type:DataTypes.STRING }
 }
 ,{
   hooks:{

@@ -5,6 +5,7 @@
  */
 
 const express = require('express');
+const session = require('express-session');
 const cors = require('cors');
 const path = require('path');
 const dotenv = require('dotenv');
@@ -24,6 +25,8 @@ let logger = require('morgan');
 
 const { devicePassportStrategy } = require('./config/devicePassportStrategy');
 const { clientPassportStrategy } = require('./config/clientPassportStrategy');
+const { googlePassportStrategy } = require('./config/googlePassportStrategy');
+const { facebookPassportStrategy } = require('./config/facebookPassportStrategy');
 
 const app = express();
 app.use(require('./utils/response/responseHandler'));
@@ -37,11 +40,19 @@ app.set('views', path.join(__dirname, 'views'));
 
 devicePassportStrategy(passport);
 clientPassportStrategy(passport);
+googlePassportStrategy(passport);
+facebookPassportStrategy(passport);
 
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(passport.initialize());
+app.use(session({
+  secret:'my-secret',
+  resave:true,
+  saveUninitialized:false
+}));
 
 app.get('/', (req, res) => {
   res.render('index');

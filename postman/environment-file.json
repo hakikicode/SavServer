@@ -1,5 +1,5 @@
 {
-  "id": "321a9603-c478-45fc-aef1-e14be474ec64",
+  "id": "20e07858-5e9c-4add-a980-b703e75b2357",
   "name": "savbox_backend_environment",
   "values": [
     {
@@ -14,6 +14,6 @@
     }
   ],
   "_postman_variable_scope": "environment",
-  "_postman_exported_at": "2023-08-08T20:06:07.269Z",
+  "_postman_exported_at": "2023-08-08T21:16:45.426Z",
   "_postman_exported_using": "Postman"
 }

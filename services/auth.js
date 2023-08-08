@@ -7,7 +7,7 @@ const model = require('../model/index');
 const dbService = require('../utils/dbService');
 const {
   JWT,LOGIN_ACCESS,
-  PLATFORM,MAX_LOGIN_RETRY_LIMIT,LOGIN_REACTIVE_TIME,FORGOT_PASSWORD_WITH
+  PLATFORM,MAX_LOGIN_RETRY_LIMIT,LOGIN_REACTIVE_TIME,DEFAULT_SEND_LOGIN_OTP,SEND_LOGIN_OTP,FORGOT_PASSWORD_WITH
 } = require('../constants/authConstant');
 const jwt = require('jsonwebtoken');
 const common = require('../utils/common');
@@ -29,6 +29,39 @@ const generateToken = async (user,secret) => {
     id:user.id,
     'username':user.username
   }, secret, { expiresIn: JWT.EXPIRES_IN * 60 });
+};
+
+/**
+ * @description : service to send SMS containing OTP.
+ * @param {obj} user : user document
+ * @return {boolean} : returns true if succeed otherwise false.
+ */
+const sendSMSForLoginOtp = async (user) => {
+  try {
+    const where = { 
+      id: user.id,
+      isActive: true,
+      isDeleted: false,        
+    };
+    let otp = common.randomNumber();
+    let expires = dayjs();
+    expires = expires.add(6, 'hour').toISOString();
+    await dbService.update(model.userAuthSettings, { userId:user.id }, {
+      loginOTP: otp,
+      expiredTimeOfLoginOTP: expires
+    });
+    let updatedUser = await dbService.findOne(model.user, where);
+    let renderData = { userName:updatedUser.username, };
+    const msg = await ejs.renderFile(`${__basedir}/views/sms/OTP/html.ejs`, renderData);
+    let smsObj = {
+      to:updatedUser.mobileNo,
+      message:msg
+    };
+    await smsService.sendSMS(smsObj);
+    return true;
+  } catch (error) {
+    return false;
+  }
 };
 
 /**
@@ -236,11 +269,11 @@ const sendResetPasswordNotification = async (user) => {
       }
     }
     if (FORGOT_PASSWORD_WITH.LINK.sms){
-      let viewType = '/reset-password/';
-      let link = `http://localhost:${process.env.PORT}${viewType + token}`;
-      const msg = await ejs.renderFile(`${__basedir}/views/sms/ResetPassword/html.ejs`, { link : link });
+      let updatedUser = await dbService.findOne(model.user,where);
+      let renderData = { userName:updatedUser.username, };
+      const msg = await ejs.renderFile(`${__basedir}/views/sms/ResetPassword/html.ejs`, renderData);
       let smsObj = {
-        to:user.mobileNo,
+        to:updatedUser.mobileNo,
         message:msg
       };
       try {
@@ -349,11 +382,169 @@ const sendPasswordByEmail = async (user) => {
   }
 };
 
+/**
+ * @description : service method to send OTP for login.
+ * @param {string} username : username of user.
+ * @return {obj}  : returns status whether OTP is sent or not. {flag, data}
+ */
+const sendLoginOTP = async (username) => {
+  try {
+    let where = { $or:[{ username:username },{ email:username }] };
+    where.isActive = true;where.isDeleted = false;        let user = await dbService.findOne(model.user,where);
+    if (!user){
+      return {
+        flag:true,
+        data:'User not found'
+      };
+    }
+    let userAuth = await dbService.findOne(model.userAuthSettings, { userId: user.id });
+    if (userAuth && userAuth.loginRetryLimit >= MAX_LOGIN_RETRY_LIMIT) {
+      if (userAuth.loginReactiveTime) {
+        let now = dayjs();
+        let limitTime = dayjs(userAuth.loginReactiveTime);
+        if (limitTime > now) {
+          let expireTime = dayjs().add(LOGIN_REACTIVE_TIME, 'minute').toISOString();
+          await dbService.update(model.userAuthSettings, { userId:user.id }, {
+            loginReactiveTime: expireTime,
+            loginRetryLimit: userAuth.loginRetryLimit + 1
+          });
+          return {
+            flag: true,
+            data: `you have exceed the number of limit.you can login after ${LOGIN_REACTIVE_TIME} minutes.`
+          };
+        }
+      } else {
+        let expireTime = dayjs().add(LOGIN_REACTIVE_TIME, 'minute').toISOString();
+        await dbService.update(model.userAuthSettings, { userId:user.id }, {
+          loginReactiveTime: expireTime,
+          loginRetryLimit: userAuth.loginRetryLimit + 1
+        });
+        return {
+          flag: true,
+          data: `you have exceed the number of limit.you can login after ${LOGIN_REACTIVE_TIME} minutes.`
+        };
+      }
+    }
+    let res;
+    if (DEFAULT_SEND_LOGIN_OTP === SEND_LOGIN_OTP.EMAIL){
+      // send Email here
+    } else if (DEFAULT_SEND_LOGIN_OTP === SEND_LOGIN_OTP.SMS){
+      // send SMS here
+      if (userAuth.loginReactiveTime) {
+        await dbService.update(model.userAuthSettings, { userId:user.id }, {
+          loginRetryLimit: 0,
+          loginReactiveTime: null 
+        });
+      }    
+      res = await sendSMSForLoginOtp(user);
+    }
+    if (!res){
+      return {
+        flag:true,
+        data:'otp can not be sent due to some issue try again later.'
+      };    
+    }
+    return {
+      flag:false,
+      data:'Please check your email for OTP'
+    };
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};
+/**
+ * @description : service to login with OTP.
+ * @param {string} username : username of user.
+ * @param {string} password : password of user.
+ * @param {string} platform : platform.
+ * @param {roleAccess} : a flag to request role access of user
+ * @return {obj}  : returns authentication object {flag,status}.
+ */
+const loginWithOTP = async (username,password, platform,roleAccess) => {
+  try {
+    let result = await loginUser(username,password, platform,roleAccess);
+    if (!result.flag) {
+      await dbService.update(model.userAuthSettings, { userId:result.data.id }, {
+        loginOTP: '',
+        expiredTimeOfLoginOTP: null 
+      });
+    }
+    return result;
+        
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};
+
+/**
+ * @description :  Social Login.
+ * @param {string} email : email of user.
+ * @param {platform} platform : platform that user wants to access.
+ * @return {boolean}  : returns status whether SMS is sent or not.
+ */
+const socialLogin = async (email,platform) => {
+  try {
+    const user = await dbService.findOne(model.user,{ email });
+    if (user && user.email) {
+      const { ...userData } = user.toJSON();
+      if (!user.userType) {
+        return {
+          flag:true,
+          data:'You have not been assigned any role'
+        };
+      }
+      if (platform === undefined){
+        return {
+          flag:true,
+          data:'Please login through Platform'
+        };
+      }
+      if (!PLATFORM[platform.toUpperCase()] || !JWT[`${platform.toUpperCase()}_SECRET`]){
+        return {
+          flag: true,
+          data: 'Platform not exists'
+        };
+      }
+      if (!LOGIN_ACCESS[user.userType].includes(PLATFORM[platform.toUpperCase()])) {
+        return {
+          flag: true,
+          data: 'you are unable to access this platform'
+        };
+      }
+      let token = await generateToken(userData, JWT[`${platform.toUpperCase()}_SECRET`]);
+      let expire = dayjs().add(JWT.EXPIRES_IN, 'second').toISOString();
+      await dbService.createOne(model.userTokens,{
+        userId: user.id,
+        token: token,
+        tokenExpiredTime: expire 
+      });
+      const userToReturn = {
+        ...userData,
+        token 
+      };
+      return {
+        flag:false,
+        data:userToReturn
+      };
+    }
+    else {
+      return {
+        flag:true,
+        data:'User/Email not exists'
+      };
+    }
+  } catch (error) {
+    throw new Error(error.message);
+  }
+};
 module.exports = {
   loginUser,
   changePassword,
   sendResetPasswordNotification,
   resetPassword,
   sendPasswordBySMS,
-  sendPasswordByEmail
+  sendPasswordByEmail,
+  sendLoginOTP,
+  loginWithOTP,
+  socialLogin
 };

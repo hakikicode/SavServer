@@ -9,10 +9,16 @@ const authController =  require('../../../controller/device/v1/authController');
 const { PLATFORM } =  require('../../../constants/authConstant'); 
 const auth = require('../../../middleware/auth');
 router.route('/register').post(authController.register);
-router.post('/login',authController.login);
-router.route('/forgot-password').post(authController.forgotPassword);
-router.route('/validate-otp').post(authController.validateResetPasswordOtp);
-router.route('/reset-password').put(authController.resetPassword);
+router.post('/send_login_otp',authController.sendOtpForLogin);
+router.post('/login_with_otp',authController.loginWithOTP);
 router.route('/logout').post(auth(PLATFORM.DEVICE), authController.logout);
+router.get('/login/google',(req,res)=>{
+  req.session.platform = 'device';
+  res.redirect(`http://localhost:${process.env.PORT}/auth/google`);
+});       
+router.get('/login/facebook',(req,res)=>{
+  req.session.platform = 'device';
+  res.redirect(`http://localhost:${process.env.PORT}/auth/facebook`);
+});       
 
 module.exports = router;

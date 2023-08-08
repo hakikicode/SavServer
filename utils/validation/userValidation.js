@@ -18,8 +18,13 @@ exports.schemaKeys = joi.object({
   email: joi.string().allow(null).allow(''),
   name: joi.string().allow(null).allow(''),
   isActive: joi.boolean(),
+  userType: joi.number().integer().allow(0),
   mobileNo: joi.string().allow(null).allow(''),
-  isDeleted: joi.boolean()
+  isDeleted: joi.boolean(),
+  ssoAuth: joi.object({
+    googleId:joi.string(),
+    facebookId:joi.string()
+  })
 }).unknown(true);
 
 /** validation keys and properties of user for updation */
@@ -29,8 +34,13 @@ exports.updateSchemaKeys = joi.object({
   email: joi.string().allow(null).allow(''),
   name: joi.string().allow(null).allow(''),
   isActive: joi.boolean(),
+  userType: joi.number().integer().allow(0),
   mobileNo: joi.string().allow(null).allow(''),
   isDeleted: joi.boolean(),
+  ssoAuth: joi.object({
+    googleId:joi.string(),
+    facebookId:joi.string()
+  }),
   id: joi.number().integer()
 }).unknown(true);
 
@@ -45,8 +55,10 @@ exports.findFilterKeys = joi.object({
       email: joi.alternatives().try(joi.array().items(),joi.string(),joi.object()),
       name: joi.alternatives().try(joi.array().items(),joi.string(),joi.object()),
       isActive: joi.alternatives().try(joi.array().items(),joi.boolean(),joi.object()),
+      userType: joi.alternatives().try(joi.array().items(),joi.number().integer(),joi.object()),
       mobileNo: joi.alternatives().try(joi.array().items(),joi.string(),joi.object()),
       isDeleted: joi.alternatives().try(joi.array().items(),joi.boolean(),joi.object()),
+      ssoAuth: joi.alternatives().try(joi.array().items(),joi.string(),joi.object()),
       id: joi.any()
     }).unknown(true),])
   ),

@@ -66,117 +66,63 @@ const register = async (req, res) => {
 };
 
 /**
- * @description : send email or sms to user with OTP on forgot password
- * @param {Object} req : request for forgotPassword
- * @param {Object} res : response for forgotPassword
- * @return {Object} : response for forgotPassword {status, message, data}
+ * @description : send OTP to user for login
+ * @param {Object} req : request for sendOtpForLogin
+ * @param {Object} res : response for sendOtpForLogin
+ * @return {Object} : response for sendOtpForLogin {status, message, data}
  */
-const forgotPassword = async (req, res) => {
-  const params = req.body;
+const sendOtpForLogin = async (req,res)=>{
   try {
-    if (!params.email) {
-      return res.badRequest({ message : 'Insufficient request parameters! email is required' });
+    let params = req.body;
+    if (!params.username){
+      return res.badRequest({ message : 'Insufficient request parameters! username is required.' });
     }
-    let where = { email: params.email.toString().toLowerCase() };
-    where.isActive = true;where.isDeleted = false;        let found = await dbService.findOne(user,where);
-    if (!found) {
-      return res.recordNotFound();
-    } 
-    let {
-      resultOfEmail,resultOfSMS
-    } = await authService.sendResetPasswordNotification(found);
-    if (resultOfEmail && resultOfSMS){
-      return res.success({ message :'OTP successfully send.' });
-    } else if (resultOfEmail && !resultOfSMS) {
-      return res.success({ message :'OTP successfully send to your email.' });
-    } else if (!resultOfEmail && resultOfSMS) { 
-      return res.success({ message : 'OTP successfully send to your mobile number.' });
-    } else {
-      return res.failure({ message :'OTP can not be sent due to some issue try again later' });
+    let result = await authService.sendLoginOTP(params.username);
+    if (result.flag){
+      return res.failure({ message :result.data });
     }
+    return res.success({ message :result.data });
   } catch (error) {
     return res.internalServerError({ message:error.message }); 
   }
 };
 
 /**
- * @description : validate OTP
- * @param {Object} req : request for validateResetPasswordOtp
- * @param {Object} res : response for validateResetPasswordOtp
- * @return {Object} : response for validateResetPasswordOtp  {status, message, data}
- */ 
-const validateResetPasswordOtp = async (req, res) => {
+ * @description : login with username and OTP
+ * @param {Object} req : request for loginWithOTP
+ * @param {Object} res : response for loginWithOTP
+ * @return {Object} : response for loginWithOTP {status, message, data}
+ */
+const loginWithOTP = async (req, res) => {
   const params = req.body;
   try {
-    if (!params.otp) {
-      return res.badRequest({ message : 'Insufficient request parameters! otp is required.' });
+    if (!params.code || !params.username) {
+      return res.badRequest({ message : 'Insufficient request parameters! username and code is required.' });
     }
-    let found = await dbService.findOne(userAuthSettings, { resetPasswordCode: params.otp });
-    if (!found || !found.resetPasswordCode) {
-      return res.failure({ message :'Invalid OTP' });
-    }
-    // link expire
-    if (dayjs(new Date()).isAfter(dayjs(found.expiredTimeOfResetPasswordCode))) {
-      return res.failure({ message :'Your reset password link is expired or invalid' });
-    }
-    return res.success({ message : 'OTP verified' });
-  } catch (error) {
-    return res.internalServerError({ message:error.message }); 
-  }
-};
-
-/**
- * @description : reset password with code and new password
- * @param {Object} req : request for resetPassword
- * @param {Object} res : response for resetPassword
- * @return {Object} : response for resetPassword {status, message, data}
- */ 
-const resetPassword = async (req, res) => {
-  const params = req.body;
-  try {
-    if (!params.code || !params.newPassword) {
-      return res.badRequest({ message : 'Insufficient request parameters! code and newPassword is required.' });
-    }
-    let userAuth = await dbService.findOne(userAuthSettings, { resetPasswordCode: params.code });
-    if (userAuth && userAuth.expiredTimeOfResetPasswordCode) {
-      if (dayjs(new Date()).isAfter(dayjs(userAuth.expiredTimeOfResetPasswordCode))) {// link expire
-        return res.failure({ message :'Your reset password link is expired or invalid' });
-      }
-    } else {
+    let isCodeVerified = false;
+    let where = { $or:[{ username:params.username },{ email:params.username }] };
+    where.isActive = true;where.isDeleted = false;        let User = await dbService.findOne(user,where);
+    if (!User) {
       // invalid code
-      return res.failure({ message :'Invalid Code' });
-    }
-    let response = await authService.resetPassword(userAuth.userId, params.newPassword);
-    if (response.flag){
-      return res.failure({ message :response.data });
-    }
-    return res.success({ message  :response.data });
-  } catch (error) {
-    return res.internalServerError({ message:error.message }); 
-  }
-};
-
-/**
- * @description : login with username and password
- * @param {Object} req : request for login 
- * @param {Object} res : response for login
- * @return {Object} : response for login {status, message, data}
- */
-const login = async (req,res)=>{
-  try {
-    let {
-      username,password
-    } = req.body;
-    if (!username || !password){
-      return res.badRequest({ message : 'Insufficient request parameters! username and password is required.' });
+      return res.badRequest({ message :'Invalid Code' });
+    } 
+    let userAuth = await dbService.findOne(userAuthSettings,{ userId:User.id });
+    if (userAuth && userAuth.loginOTP && userAuth.expiredTimeOfLoginOTP){
+      isCodeVerified = userAuth.loginOTP == params.code ? true : false;
+      if (dayjs(new Date()).isAfter(dayjs(userAuth.expiredTimeOfLoginOTP))) {// link expire
+        return res.badRequest({ message :'Your reset password link is expired' });
+      }
+      if (userAuth.loginOTP !== params.code){
+        return res.badRequest({ message :'Invalid Code' });
+      }
     }
     let roleAccess = false;
     if (req.body.includeRoleAccess){
       roleAccess = req.body.includeRoleAccess;
     }
-    let result = await authService.loginUser(username, password, authConstant.PLATFORM.CLIENT, roleAccess);
+    let result = await authService.loginWithOTP(params.username, null, authConstant.PLATFORM.CLIENT,roleAccess);
     if (result.flag){
-      return res.badRequest({ message:result.data });
+      return res.badRequest({ message :result.data });
     }
     return res.success({
       data:result.data,
@@ -210,9 +156,7 @@ const logout = async (req, res) => {
 };
 module.exports = {
   register,
-  login,
-  forgotPassword,
-  validateResetPasswordOtp,
-  resetPassword,
+  sendOtpForLogin,
+  loginWithOTP,
   logout,
 };
